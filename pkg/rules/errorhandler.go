@@ -3,6 +3,7 @@ package rules
 import (
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/JSLEEKR/flowlint/pkg/dag"
 	"github.com/JSLEEKR/flowlint/pkg/lint"
@@ -123,6 +124,9 @@ func (r *RetryConfig) Check(g *dag.Graph) []lint.Finding {
 		}
 
 		if node.ErrorHandler != nil {
+			// Normalize fallback reference (trim whitespace for consistency with step ID trimming)
+			node.ErrorHandler.Fallback = strings.TrimSpace(node.ErrorHandler.Fallback)
+
 			// Validate strategy is a known value
 			if node.ErrorHandler.Strategy != "" && !validStrategies[node.ErrorHandler.Strategy] {
 				findings = append(findings, lint.Finding{

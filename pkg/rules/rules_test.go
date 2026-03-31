@@ -589,6 +589,23 @@ func TestRetryConfig_FallbackNoCycle(t *testing.T) {
 	}
 }
 
+func TestRetryConfig_FallbackWhitespaceTrimmed(t *testing.T) {
+	// Regression: fallback with whitespace must match trimmed step IDs
+	g := buildGraph(t, &dag.Workflow{
+		Steps: []dag.Step{
+			{ID: "a", ErrorHandler: &dag.ErrorHandler{Strategy: "fallback", Fallback: "  b  "}},
+			{ID: "  b  "},
+		},
+	})
+	r := &RetryConfig{}
+	findings := r.Check(g)
+	for _, f := range findings {
+		if f.Severity == lint.SeverityError && contains(f.Message, "does not exist") {
+			t.Errorf("fallback with whitespace should resolve to trimmed step ID, but got: %s", f.Message)
+		}
+	}
+}
+
 func TestRetryConfig_ValidStrategies(t *testing.T) {
 	strategies := []string{"retry", "fallback", "ignore", "abort"}
 	for _, strategy := range strategies {

@@ -88,10 +88,12 @@ func BuildGraph(w *Workflow) (*Graph, error) {
 		g.InEdges[step.ID] = nil
 	}
 
-	// Build edges from depends_on (deduplicate entries)
+	// Build edges from depends_on (deduplicate entries, trim whitespace)
 	for _, step := range w.Steps {
 		seen := make(map[string]bool)
-		for _, dep := range step.DependsOn {
+		for i, dep := range step.DependsOn {
+			dep = strings.TrimSpace(dep)
+			step.DependsOn[i] = dep
 			if seen[dep] {
 				continue
 			}

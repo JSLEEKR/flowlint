@@ -452,6 +452,23 @@ func TestBuildGraph_WhitespaceTrimmedID(t *testing.T) {
 	}
 }
 
+func TestBuildGraph_WhitespaceDependsOn(t *testing.T) {
+	// Regression: depends_on with whitespace must match trimmed step IDs
+	w := &Workflow{
+		Steps: []Step{
+			{ID: "  a  "},
+			{ID: "b", DependsOn: []string{"  a  "}},
+		},
+	}
+	g, err := BuildGraph(w)
+	if err != nil {
+		t.Fatalf("expected success with whitespace depends_on, got error: %v", err)
+	}
+	if len(g.InEdges["b"]) != 1 || g.InEdges["b"][0] != "a" {
+		t.Errorf("expected b to depend on trimmed 'a', got in-edges: %v", g.InEdges["b"])
+	}
+}
+
 func TestFindDeadEnds_OutputNameOnly(t *testing.T) {
 	w := &Workflow{
 		Steps: []Step{
