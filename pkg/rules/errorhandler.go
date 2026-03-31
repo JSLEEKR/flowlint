@@ -185,5 +185,37 @@ func (r *RetryConfig) Check(g *dag.Graph) []lint.Finding {
 		}
 	}
 
+	// Detect transitive fallback cycles (A→B→A, A→B→C→A, etc.)
+	for _, id := range sortedNodeIDs(g) {
+		node := g.Nodes[id]
+		if node.ErrorHandler == nil || node.ErrorHandler.Fallback == "" {
+			continue
+		}
+		// Walk the fallback chain starting from this node
+		visited := map[string]bool{id: true}
+		current := node.ErrorHandler.Fallback
+		for current != "" {
+			if visited[current] {
+				// Found a cycle — but skip self-references (already reported above)
+				if current == id && len(visited) == 1 {
+					break
+				}
+				findings = append(findings, lint.Finding{
+					RuleID:   r.ID(),
+					Severity: lint.SeverityError,
+					Message:  fmt.Sprintf("step %q is part of a fallback cycle (chain revisits %q)", id, current),
+					StepID:   id,
+				})
+				break
+			}
+			visited[current] = true
+			next := g.Nodes[current]
+			if next == nil || next.ErrorHandler == nil {
+				break
+			}
+			current = next.ErrorHandler.Fallback
+		}
+	}
+
 	return findings
 }

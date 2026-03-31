@@ -528,6 +528,67 @@ func TestRetryConfig_UnknownStrategy(t *testing.T) {
 	}
 }
 
+func TestRetryConfig_FallbackCycleTwoNodes(t *testing.T) {
+	// A -> B -> A (transitive cycle)
+	g := buildGraph(t, &dag.Workflow{
+		Steps: []dag.Step{
+			{ID: "a", ErrorHandler: &dag.ErrorHandler{Strategy: "fallback", Fallback: "b"}},
+			{ID: "b", ErrorHandler: &dag.ErrorHandler{Strategy: "fallback", Fallback: "a"}},
+		},
+	})
+	r := &RetryConfig{}
+	findings := r.Check(g)
+	hasCycleError := false
+	for _, f := range findings {
+		if f.Severity == lint.SeverityError && contains(f.Message, "fallback cycle") {
+			hasCycleError = true
+		}
+	}
+	if !hasCycleError {
+		t.Error("expected error for transitive fallback cycle A->B->A")
+	}
+}
+
+func TestRetryConfig_FallbackCycleThreeNodes(t *testing.T) {
+	// A -> B -> C -> A (transitive cycle)
+	g := buildGraph(t, &dag.Workflow{
+		Steps: []dag.Step{
+			{ID: "a", ErrorHandler: &dag.ErrorHandler{Strategy: "fallback", Fallback: "b"}},
+			{ID: "b", ErrorHandler: &dag.ErrorHandler{Strategy: "fallback", Fallback: "c"}},
+			{ID: "c", ErrorHandler: &dag.ErrorHandler{Strategy: "fallback", Fallback: "a"}},
+		},
+	})
+	r := &RetryConfig{}
+	findings := r.Check(g)
+	hasCycleError := false
+	for _, f := range findings {
+		if f.Severity == lint.SeverityError && contains(f.Message, "fallback cycle") {
+			hasCycleError = true
+		}
+	}
+	if !hasCycleError {
+		t.Error("expected error for transitive fallback cycle A->B->C->A")
+	}
+}
+
+func TestRetryConfig_FallbackNoCycle(t *testing.T) {
+	// A -> B -> C (no cycle, chain terminates)
+	g := buildGraph(t, &dag.Workflow{
+		Steps: []dag.Step{
+			{ID: "a", ErrorHandler: &dag.ErrorHandler{Strategy: "fallback", Fallback: "b"}},
+			{ID: "b", ErrorHandler: &dag.ErrorHandler{Strategy: "fallback", Fallback: "c"}},
+			{ID: "c"},
+		},
+	})
+	r := &RetryConfig{}
+	findings := r.Check(g)
+	for _, f := range findings {
+		if contains(f.Message, "fallback cycle") {
+			t.Errorf("unexpected fallback cycle error for non-cyclic chain: %s", f.Message)
+		}
+	}
+}
+
 func TestRetryConfig_ValidStrategies(t *testing.T) {
 	strategies := []string{"retry", "fallback", "ignore", "abort"}
 	for _, strategy := range strategies {

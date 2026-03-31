@@ -405,6 +405,67 @@ func TestTopologicalSort_DeterministicOrder(t *testing.T) {
 	}
 }
 
+func TestBuildGraph_DuplicateDependsOn(t *testing.T) {
+	w := &Workflow{
+		Steps: []Step{
+			{ID: "a"},
+			{ID: "b", DependsOn: []string{"a", "a", "a"}},
+		},
+	}
+	g, err := BuildGraph(w)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// b should have exactly 1 in-edge to a, not 3
+	if len(g.InEdges["b"]) != 1 {
+		t.Errorf("expected 1 in-edge for b, got %d", len(g.InEdges["b"]))
+	}
+	if len(g.Edges["a"]) != 1 {
+		t.Errorf("expected 1 out-edge for a, got %d", len(g.Edges["a"]))
+	}
+}
+
+func TestBuildGraph_WhitespaceOnlyID(t *testing.T) {
+	w := &Workflow{Steps: []Step{{ID: "   "}}}
+	_, err := BuildGraph(w)
+	if err == nil {
+		t.Fatal("expected error for whitespace-only ID")
+	}
+}
+
+func TestBuildGraph_WhitespaceTrimmedID(t *testing.T) {
+	w := &Workflow{
+		Steps: []Step{
+			{ID: "  a  "},
+			{ID: "b", DependsOn: []string{"a"}},
+		},
+	}
+	g, err := BuildGraph(w)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, exists := g.Nodes["a"]; !exists {
+		t.Error("expected trimmed step ID 'a' in nodes")
+	}
+	if _, exists := g.Nodes["  a  "]; exists {
+		t.Error("untrimmed step ID should not exist in nodes")
+	}
+}
+
+func TestFindDeadEnds_OutputNameOnly(t *testing.T) {
+	w := &Workflow{
+		Steps: []Step{
+			{ID: "a"},
+			{ID: "b", DependsOn: []string{"a"}, Output: &TypeInfo{Name: "result"}},
+		},
+	}
+	g, _ := BuildGraph(w)
+	deadEnds := g.FindDeadEnds()
+	if len(deadEnds) != 1 || deadEnds[0] != "b" {
+		t.Errorf("expected dead end [b] for output with Name only, got %v", deadEnds)
+	}
+}
+
 func TestBuildGraph_ComplexWorkflow(t *testing.T) {
 	w := &Workflow{
 		Name:    "complex",

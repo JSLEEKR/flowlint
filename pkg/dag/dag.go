@@ -5,6 +5,7 @@ package dag
 import (
 	"fmt"
 	"sort"
+	"strings"
 )
 
 // StepType represents the type of a workflow step.
@@ -74,6 +75,8 @@ func BuildGraph(w *Workflow) (*Graph, error) {
 	// Index all steps
 	for i := range w.Steps {
 		step := &w.Steps[i]
+		// Trim whitespace from step ID; reject if empty after trim
+		step.ID = strings.TrimSpace(step.ID)
 		if step.ID == "" {
 			return nil, fmt.Errorf("step at index %d has empty ID", i)
 		}
@@ -85,9 +88,14 @@ func BuildGraph(w *Workflow) (*Graph, error) {
 		g.InEdges[step.ID] = nil
 	}
 
-	// Build edges from depends_on
+	// Build edges from depends_on (deduplicate entries)
 	for _, step := range w.Steps {
+		seen := make(map[string]bool)
 		for _, dep := range step.DependsOn {
+			if seen[dep] {
+				continue
+			}
+			seen[dep] = true
 			if _, exists := g.Nodes[dep]; !exists {
 				return nil, fmt.Errorf("step %q depends on unknown step %q", step.ID, dep)
 			}
@@ -206,7 +214,7 @@ func (g *Graph) FindDeadEnds() []string {
 	var deadEnds []string
 	for _, id := range g.Leaves {
 		node := g.Nodes[id]
-		if node.Output != nil && node.Output.Format != "" {
+		if node.Output != nil && (node.Output.Format != "" || node.Output.Name != "") {
 			// This node produces output but nothing consumes it
 			deadEnds = append(deadEnds, id)
 		}
