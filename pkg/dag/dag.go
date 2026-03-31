@@ -266,16 +266,16 @@ func (g *Graph) TopologicalSort() ([]string, error) {
 		queue = queue[1:]
 		result = append(result, node)
 
-		deps := make([]string, len(g.Edges[node]))
-		copy(deps, g.Edges[node])
-		sort.Strings(deps)
-
-		for _, dep := range deps {
+		for _, dep := range g.Edges[node] {
 			inDegree[dep]--
 			if inDegree[dep] == 0 {
 				queue = append(queue, dep)
 			}
 		}
+		// Re-sort queue to maintain deterministic lexicographic ordering.
+		// Without this, nodes freed at different processing stages would appear
+		// in insertion order rather than alphabetical order.
+		sort.Strings(queue)
 	}
 
 	return result, nil

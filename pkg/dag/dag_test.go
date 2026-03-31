@@ -375,6 +375,36 @@ func TestTopologicalSort_Diamond(t *testing.T) {
 	}
 }
 
+func TestTopologicalSort_DeterministicOrder(t *testing.T) {
+	// Regression test: nodes freed at different processing stages must
+	// still appear in lexicographic order among valid alternatives.
+	// x -> a -> b, x -> z
+	// Both [x,a,b,z] and [x,a,z,b] are valid topological orders,
+	// but deterministic sort should produce [x,a,b,z].
+	w := &Workflow{
+		Steps: []Step{
+			{ID: "x"},
+			{ID: "a", DependsOn: []string{"x"}},
+			{ID: "z", DependsOn: []string{"x"}},
+			{ID: "b", DependsOn: []string{"a"}},
+		},
+	}
+	g, _ := BuildGraph(w)
+	order, err := g.TopologicalSort()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	expected := []string{"x", "a", "b", "z"}
+	if len(order) != len(expected) {
+		t.Fatalf("expected %d items, got %d: %v", len(expected), len(order), order)
+	}
+	for i, id := range expected {
+		if order[i] != id {
+			t.Errorf("position %d: expected %q, got %q (full order: %v)", i, id, order[i], order)
+		}
+	}
+}
+
 func TestBuildGraph_ComplexWorkflow(t *testing.T) {
 	w := &Workflow{
 		Name:    "complex",
