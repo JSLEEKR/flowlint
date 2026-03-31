@@ -1,0 +1,4 @@
+flowlint
+flowlint.exe
+*.exe
+dist/

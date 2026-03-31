@@ -1,0 +1,29 @@
+name: broken-pipeline
+description: Workflow with multiple issues for demonstration
+
+steps:
+  - id: fetch
+    name: Fetch Data
+    output:
+      name: raw_data
+      format: json
+
+  - id: process
+    name: Process Data
+    depends_on: [fetch]
+    input:
+      name: data
+      format: number
+    output:
+      name: result
+      format: string
+
+  - id: orphan-step
+    name: Disconnected Step
+
+  - id: final
+    name: Final Step
+    depends_on: [process]
+    input:
+      name: result
+      format: array

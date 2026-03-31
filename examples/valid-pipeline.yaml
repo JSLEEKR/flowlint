@@ -1,0 +1,50 @@
+name: data-pipeline
+version: "1.0"
+description: ETL data processing pipeline
+
+steps:
+  - id: fetch
+    name: Fetch Data
+    type: task
+    timeout: "60s"
+    output:
+      name: raw_data
+      format: json
+    error_handler:
+      strategy: retry
+      max_retry: 3
+      timeout: "10s"
+
+  - id: validate
+    name: Validate Schema
+    depends_on: [fetch]
+    timeout: "30s"
+    input:
+      name: raw_data
+      format: json
+    output:
+      name: valid_data
+      format: object
+    error_handler:
+      strategy: abort
+      timeout: "10s"
+
+  - id: transform
+    name: Transform Data
+    depends_on: [validate]
+    timeout: "120s"
+    input:
+      name: valid_data
+      format: object
+    error_handler:
+      strategy: fallback
+      fallback: notify
+      timeout: "30s"
+
+  - id: notify
+    name: Send Notification
+    depends_on: [validate]
+    timeout: "15s"
+    error_handler:
+      strategy: ignore
+      timeout: "5s"
