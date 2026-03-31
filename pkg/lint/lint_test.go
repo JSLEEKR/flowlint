@@ -210,3 +210,57 @@ func TestEngine_NoRules(t *testing.T) {
 		t.Errorf("expected 0 findings, got %d", len(findings))
 	}
 }
+
+func TestSeverity_MarshalJSON(t *testing.T) {
+	tests := []struct {
+		s    Severity
+		want string
+	}{
+		{SeverityInfo, `"info"`},
+		{SeverityWarning, `"warning"`},
+		{SeverityError, `"error"`},
+	}
+	for _, tt := range tests {
+		got, err := tt.s.MarshalJSON()
+		if err != nil {
+			t.Fatalf("MarshalJSON(%d) error: %v", tt.s, err)
+		}
+		if string(got) != tt.want {
+			t.Errorf("MarshalJSON(%d) = %q, want %q", tt.s, string(got), tt.want)
+		}
+	}
+}
+
+func TestSeverity_UnmarshalJSON(t *testing.T) {
+	tests := []struct {
+		input string
+		want  Severity
+	}{
+		{`"info"`, SeverityInfo},
+		{`"warning"`, SeverityWarning},
+		{`"error"`, SeverityError},
+		{`0`, SeverityInfo},
+		{`1`, SeverityWarning},
+		{`2`, SeverityError},
+	}
+	for _, tt := range tests {
+		var s Severity
+		err := s.UnmarshalJSON([]byte(tt.input))
+		if err != nil {
+			t.Fatalf("UnmarshalJSON(%q) error: %v", tt.input, err)
+		}
+		if s != tt.want {
+			t.Errorf("UnmarshalJSON(%q) = %d, want %d", tt.input, s, tt.want)
+		}
+	}
+}
+
+func TestSeverity_UnmarshalJSON_Invalid(t *testing.T) {
+	var s Severity
+	if err := s.UnmarshalJSON([]byte(`"invalid"`)); err == nil {
+		t.Error("expected error for invalid severity string")
+	}
+	if err := s.UnmarshalJSON([]byte(`99`)); err == nil {
+		t.Error("expected error for invalid severity number")
+	}
+}

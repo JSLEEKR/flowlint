@@ -31,6 +31,42 @@ func (s Severity) String() string {
 	}
 }
 
+// MarshalJSON serializes severity as a human-readable string instead of a raw integer.
+func (s Severity) MarshalJSON() ([]byte, error) {
+	return []byte(`"` + s.String() + `"`), nil
+}
+
+// UnmarshalJSON deserializes severity from either a string or integer representation.
+func (s *Severity) UnmarshalJSON(data []byte) error {
+	// Try string first
+	str := string(data)
+	if len(str) >= 2 && str[0] == '"' && str[len(str)-1] == '"' {
+		switch str[1 : len(str)-1] {
+		case "info":
+			*s = SeverityInfo
+		case "warning":
+			*s = SeverityWarning
+		case "error":
+			*s = SeverityError
+		default:
+			return fmt.Errorf("unknown severity: %s", str)
+		}
+		return nil
+	}
+	// Fall back to integer
+	switch str {
+	case "0":
+		*s = SeverityInfo
+	case "1":
+		*s = SeverityWarning
+	case "2":
+		*s = SeverityError
+	default:
+		return fmt.Errorf("unknown severity value: %s", str)
+	}
+	return nil
+}
+
 // Finding represents a single lint result.
 type Finding struct {
 	RuleID   string   `json:"rule_id"`
