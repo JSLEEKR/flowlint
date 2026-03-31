@@ -450,6 +450,123 @@ func TestRetryConfig_ValidRetry(t *testing.T) {
 	}
 }
 
+func TestRetryConfig_SelfReferencingFallback(t *testing.T) {
+	g := buildGraph(t, &dag.Workflow{
+		Steps: []dag.Step{
+			{ID: "a", ErrorHandler: &dag.ErrorHandler{Strategy: "fallback", Fallback: "a"}},
+		},
+	})
+	r := &RetryConfig{}
+	findings := r.Check(g)
+	hasError := false
+	for _, f := range findings {
+		if f.Severity == lint.SeverityError && f.StepID == "a" {
+			if contains(f.Message, "itself") {
+				hasError = true
+			}
+		}
+	}
+	if !hasError {
+		t.Error("expected error for self-referencing fallback (infinite loop)")
+	}
+}
+
+func TestRetryConfig_NegativeRetry(t *testing.T) {
+	g := buildGraph(t, &dag.Workflow{
+		Steps: []dag.Step{
+			{ID: "a", Retry: -1},
+		},
+	})
+	r := &RetryConfig{}
+	findings := r.Check(g)
+	hasNegativeError := false
+	for _, f := range findings {
+		if f.Severity == lint.SeverityError && contains(f.Message, "negative retry") {
+			hasNegativeError = true
+		}
+	}
+	if !hasNegativeError {
+		t.Error("expected error for negative retry value")
+	}
+}
+
+func TestRetryConfig_NegativeMaxRetry(t *testing.T) {
+	g := buildGraph(t, &dag.Workflow{
+		Steps: []dag.Step{
+			{ID: "a", ErrorHandler: &dag.ErrorHandler{Strategy: "retry", MaxRetry: -5}},
+		},
+	})
+	r := &RetryConfig{}
+	findings := r.Check(g)
+	hasNegativeError := false
+	for _, f := range findings {
+		if f.Severity == lint.SeverityError && contains(f.Message, "negative max_retry") {
+			hasNegativeError = true
+		}
+	}
+	if !hasNegativeError {
+		t.Error("expected error for negative max_retry value")
+	}
+}
+
+func TestRetryConfig_UnknownStrategy(t *testing.T) {
+	g := buildGraph(t, &dag.Workflow{
+		Steps: []dag.Step{
+			{ID: "a", ErrorHandler: &dag.ErrorHandler{Strategy: "invalid-strategy"}},
+		},
+	})
+	r := &RetryConfig{}
+	findings := r.Check(g)
+	hasUnknownError := false
+	for _, f := range findings {
+		if f.Severity == lint.SeverityError && contains(f.Message, "unknown error handler strategy") {
+			hasUnknownError = true
+		}
+	}
+	if !hasUnknownError {
+		t.Error("expected error for unknown error handler strategy")
+	}
+}
+
+func TestRetryConfig_ValidStrategies(t *testing.T) {
+	strategies := []string{"retry", "fallback", "ignore", "abort"}
+	for _, strategy := range strategies {
+		eh := &dag.ErrorHandler{Strategy: strategy}
+		if strategy == "retry" {
+			eh.MaxRetry = 3
+		}
+		if strategy == "fallback" {
+			eh.Fallback = "b"
+		}
+		g := buildGraph(t, &dag.Workflow{
+			Steps: []dag.Step{
+				{ID: "a", ErrorHandler: eh},
+				{ID: "b"},
+			},
+		})
+		r := &RetryConfig{}
+		findings := r.Check(g)
+		for _, f := range findings {
+			if contains(f.Message, "unknown error handler strategy") {
+				t.Errorf("valid strategy %q flagged as unknown", strategy)
+			}
+		}
+	}
+}
+
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsHelper(s, substr))
+}
+
+func containsHelper(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}
+
 // --- Registry tests ---
 
 func TestAllRules(t *testing.T) {

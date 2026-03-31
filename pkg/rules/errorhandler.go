@@ -88,11 +88,30 @@ func (r *RetryConfig) DefaultSeverity() lint.Severity {
 	return lint.SeverityWarning
 }
 
+// validStrategies lists the recognized error handler strategies.
+var validStrategies = map[string]bool{
+	"retry":    true,
+	"fallback": true,
+	"ignore":   true,
+	"abort":    true,
+}
+
 func (r *RetryConfig) Check(g *dag.Graph) []lint.Finding {
 	var findings []lint.Finding
 
 	for _, id := range sortedNodeIDs(g) {
 		node := g.Nodes[id]
+
+		// Check for negative retry values on the step
+		if node.Retry < 0 {
+			findings = append(findings, lint.Finding{
+				RuleID:   r.ID(),
+				Severity: lint.SeverityError,
+				Message:  fmt.Sprintf("step %q has invalid negative retry=%d", id, node.Retry),
+				StepID:   id,
+			})
+		}
+
 		// Check if retry is set on step but no error handler
 		if node.Retry > 0 && node.ErrorHandler == nil {
 			findings = append(findings, lint.Finding{
@@ -103,35 +122,65 @@ func (r *RetryConfig) Check(g *dag.Graph) []lint.Finding {
 			})
 		}
 
-		// Check if error handler has retry strategy but no max_retry
-		if node.ErrorHandler != nil && node.ErrorHandler.Strategy == "retry" && node.ErrorHandler.MaxRetry == 0 && node.Retry == 0 {
-			findings = append(findings, lint.Finding{
-				RuleID:   r.ID(),
-				Severity: r.DefaultSeverity(),
-				Message:  fmt.Sprintf("step %q has retry strategy but no max_retry count specified", id),
-				StepID:   id,
-			})
-		}
-
-		// Check if error handler has fallback strategy but no fallback step
-		if node.ErrorHandler != nil && node.ErrorHandler.Strategy == "fallback" && node.ErrorHandler.Fallback == "" {
-			findings = append(findings, lint.Finding{
-				RuleID:   r.ID(),
-				Severity: lint.SeverityError,
-				Message:  fmt.Sprintf("step %q has fallback strategy but no fallback step specified", id),
-				StepID:   id,
-			})
-		}
-
-		// Check if fallback references a valid step
-		if node.ErrorHandler != nil && node.ErrorHandler.Fallback != "" {
-			if _, exists := g.Nodes[node.ErrorHandler.Fallback]; !exists {
+		if node.ErrorHandler != nil {
+			// Validate strategy is a known value
+			if node.ErrorHandler.Strategy != "" && !validStrategies[node.ErrorHandler.Strategy] {
 				findings = append(findings, lint.Finding{
 					RuleID:   r.ID(),
 					Severity: lint.SeverityError,
-					Message:  fmt.Sprintf("step %q references fallback step %q which does not exist", id, node.ErrorHandler.Fallback),
+					Message:  fmt.Sprintf("step %q has unknown error handler strategy %q (valid: retry, fallback, ignore, abort)", id, node.ErrorHandler.Strategy),
 					StepID:   id,
 				})
+			}
+
+			// Check for negative max_retry
+			if node.ErrorHandler.MaxRetry < 0 {
+				findings = append(findings, lint.Finding{
+					RuleID:   r.ID(),
+					Severity: lint.SeverityError,
+					Message:  fmt.Sprintf("step %q has invalid negative max_retry=%d", id, node.ErrorHandler.MaxRetry),
+					StepID:   id,
+				})
+			}
+
+			// Check if error handler has retry strategy but no max_retry
+			if node.ErrorHandler.Strategy == "retry" && node.ErrorHandler.MaxRetry == 0 && node.Retry == 0 {
+				findings = append(findings, lint.Finding{
+					RuleID:   r.ID(),
+					Severity: r.DefaultSeverity(),
+					Message:  fmt.Sprintf("step %q has retry strategy but no max_retry count specified", id),
+					StepID:   id,
+				})
+			}
+
+			// Check if error handler has fallback strategy but no fallback step
+			if node.ErrorHandler.Strategy == "fallback" && node.ErrorHandler.Fallback == "" {
+				findings = append(findings, lint.Finding{
+					RuleID:   r.ID(),
+					Severity: lint.SeverityError,
+					Message:  fmt.Sprintf("step %q has fallback strategy but no fallback step specified", id),
+					StepID:   id,
+				})
+			}
+
+			// Check if fallback references a valid step
+			if node.ErrorHandler.Fallback != "" {
+				if node.ErrorHandler.Fallback == id {
+					// Self-referencing fallback creates an infinite loop
+					findings = append(findings, lint.Finding{
+						RuleID:   r.ID(),
+						Severity: lint.SeverityError,
+						Message:  fmt.Sprintf("step %q has fallback referencing itself, which creates an infinite loop", id),
+						StepID:   id,
+					})
+				} else if _, exists := g.Nodes[node.ErrorHandler.Fallback]; !exists {
+					findings = append(findings, lint.Finding{
+						RuleID:   r.ID(),
+						Severity: lint.SeverityError,
+						Message:  fmt.Sprintf("step %q references fallback step %q which does not exist", id, node.ErrorHandler.Fallback),
+						StepID:   id,
+					})
+				}
 			}
 		}
 	}
